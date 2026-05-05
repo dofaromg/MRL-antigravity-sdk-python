@@ -68,8 +68,14 @@ pyenv global 3.13
 
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --upgrade pip setuptools wheel build twine \
-    keyring keyrings.google-artifactregistry-auth 2>&1 | tail -3
+# When running on Kokoro Instances with the MOSS network proxy, AR auth is
+# injected automatically by the proxy. Skip the keyring auth package.
+if [[ "${NETWORK_PROXY_ENABLED:-}" == "true" ]]; then
+  pip install --no-cache-dir --upgrade pip setuptools wheel build twine 2>&1 | tail -3
+else
+  pip install --upgrade pip setuptools wheel build twine \
+      keyring keyrings.google-artifactregistry-auth 2>&1 | tail -3
+fi
 
 DIST_DIR="dist"
 rm -rf "${DIST_DIR}"
