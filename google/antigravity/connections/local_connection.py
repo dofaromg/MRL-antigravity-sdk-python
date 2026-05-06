@@ -379,13 +379,20 @@ def _extract_tool_result(
   return None
 
 
-def callable_to_tool_proto(fn: Callable[..., Any]) -> localharness_pb2.Tool:
+def callable_to_tool_proto(
+    fn: Callable[..., Any],
+    tool_runner: t_runner.ToolRunner | None = None,
+) -> localharness_pb2.Tool:
   """Converts a Python callable to a localharness Tool proto.
 
   Uses google.genai.types.FunctionDeclaration for schema extraction.
+  If a ``tool_runner`` is provided, the runner's ``get_public_callable``
+  is used to strip injectable parameters (e.g. ``ToolContext``) from
+  the schema so the model never sees them.
 
   Args:
       fn: The Python callable to convert.
+      tool_runner: Optional ToolRunner that owns schema-hiding logic.
 
   Returns:
       A localharness_pb2.Tool proto.
@@ -397,8 +404,15 @@ def callable_to_tool_proto(fn: Callable[..., Any]) -> localharness_pb2.Tool:
         parameters_json_schema=json.dumps(fn.input_schema),
     )
 
+  # Use the ToolRunner's public callable to strip injectable params.
+  target_fn = fn
+  if tool_runner is not None:
+    tool_name = fn.__name__
+    if tool_name in tool_runner.tools:
+      target_fn = tool_runner.get_public_callable(tool_name)
+
   decl = genai_types.FunctionDeclaration.from_callable_with_api_option(
-      callable=fn,
+      callable=target_fn,
       api_option="GEMINI_API",
   )
   if decl.parameters:
@@ -1250,7 +1264,8 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
     tool_protos = []
     if self._tool_runner:
       tool_protos = [
-          callable_to_tool_proto(fn) for fn in self._tool_runner.tools.values()
+          callable_to_tool_proto(fn, tool_runner=self._tool_runner)
+          for fn in self._tool_runner.tools.values()
       ]
 
     system_instructions_proto = None

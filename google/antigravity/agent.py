@@ -31,6 +31,7 @@ from google.antigravity.hooks import hook_runner
 from google.antigravity.hooks import hooks
 from google.antigravity.hooks import policy
 from google.antigravity.mcp import bridge
+from google.antigravity.tools import tool_context
 from google.antigravity.tools import tool_runner
 from google.antigravity.triggers import trigger_runner
 from google.antigravity.triggers import triggers as triggers_lib
@@ -284,6 +285,12 @@ class Agent:
         )
         await self._trigger_runner.start()
         self._pending_triggers.clear()
+
+      # Wire ToolContext into ToolRunner so tools can access
+      # conversation capabilities (same pattern as TriggerRunner).
+      if self._tool_runner:
+        ctx = tool_context.ToolContext(self._conversation._connection)
+        self._tool_runner.set_context(ctx)
 
       return self
     except Exception:

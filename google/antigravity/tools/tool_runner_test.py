@@ -414,5 +414,223 @@ class ProcessToolCallsTest(absltest.TestCase):
     self.assertIsNone(results[0].exception)
 
 
+class ContextInjectionTest(absltest.TestCase):
+  """Validates ToolContext injection into tools.
+
+  Ensures that tools declaring a ToolContext-typed parameter receive the
+  context automatically, while tools without it remain unaffected.
+  """
+
+  def _make_mock_context(self):
+    """Creates a mock ToolContext for testing."""
+    from unittest import mock  # pylint: disable=g-import-not-at-top
+    from google.antigravity.tools import tool_context  # pylint: disable=g-import-not-at-top
+
+    ctx = mock.MagicMock(spec=tool_context.ToolContext)
+    ctx.conversation_id = "test-id"
+    return ctx
+
+  def test_tool_with_context_receives_it(self):
+    """Verifies that a tool requesting ToolContext gets it injected.
+
+    What: Checks that a tool with a ToolContext param receives it.
+    Why: Core injection feature — tools must be able to access context.
+    How: Registers a tool with a context param, sets context, and executes.
+    """
+    from google.antigravity.tools import tool_context  # pylint: disable=g-import-not-at-top
+
+    received_ctx = None
+
+    def _context_tool(arg1: str, ctx: tool_context.ToolContext) -> str:
+      nonlocal received_ctx
+      received_ctx = ctx
+      return f"got {arg1}"
+
+    mock_ctx = self._make_mock_context()
+    runner = tool_runner.ToolRunner([_context_tool])
+    runner.set_context(mock_ctx)
+    result = asyncio.run(runner.execute("_context_tool", arg1="hello"))
+    self.assertEqual(result, "got hello")
+    self.assertIs(received_ctx, mock_ctx)
+
+  def test_tool_without_context_works_normally(self):
+    """Verifies backward compatibility — tools without context are unaffected.
+
+    What: Checks that plain tools still work when context is set.
+    Why: Context injection must be opt-in, not breaking existing tools.
+    How: Registers a plain tool, sets context, and verifies normal execution.
+    """
+    mock_ctx = self._make_mock_context()
+    runner = tool_runner.ToolRunner([_sample_tool])
+    runner.set_context(mock_ctx)
+    result = asyncio.run(runner.execute("_sample_tool", arg1="World"))
+    self.assertEqual(result, "Hello World")
+
+  def test_async_tool_with_context(self):
+    """Verifies context injection works for async tools.
+
+    What: Checks that async tools with ToolContext get it injected.
+    Why: Async tools are first-class citizens and must support injection.
+    How: Registers an async tool with context param and verifies injection.
+    """
+    from google.antigravity.tools import tool_context  # pylint: disable=g-import-not-at-top
+
+    received_ctx = None
+
+    async def _async_context_tool(x: int, ctx: tool_context.ToolContext) -> int:
+      nonlocal received_ctx
+      received_ctx = ctx
+      return x * 2
+
+    mock_ctx = self._make_mock_context()
+    runner = tool_runner.ToolRunner([_async_context_tool])
+    runner.set_context(mock_ctx)
+    result = asyncio.run(runner.execute("_async_context_tool", x=5))
+    self.assertEqual(result, 10)
+    self.assertIs(received_ctx, mock_ctx)
+
+  def test_no_context_set_skips_injection(self):
+    """Verifies graceful behavior when no context has been set.
+
+    What: Checks that tools with context param don't crash when context is None.
+    Why: Context is optional — runner without set_context must still work.
+    How: Registers a tool with optional context and runs without set_context.
+    """
+    from google.antigravity.tools import tool_context  # pylint: disable=g-import-not-at-top
+
+    def _optional_ctx_tool(
+        arg1: str, ctx: tool_context.ToolContext | None = None
+    ) -> str:
+      del arg1  # Unused, exists to verify injection doesn't break extra args.
+      return f"ctx={ctx is not None}"
+
+    runner = tool_runner.ToolRunner([_optional_ctx_tool])
+    # No set_context call — context remains None.
+    result = asyncio.run(runner.execute("_optional_ctx_tool", arg1="test"))
+    self.assertEqual(result, "ctx=False")
+
+  def test_process_tool_calls_with_context(self):
+    """Verifies context injection works in batch processing.
+
+    What: Checks that process_tool_calls injects context correctly.
+    Why: Batch processing is the primary tool dispatch path.
+    How: Processes a tool call batch and verifies context was injected.
+    """
+    from google.antigravity.tools import tool_context  # pylint: disable=g-import-not-at-top
+
+    received_ctx = None
+
+    def _batch_ctx_tool(ctx: tool_context.ToolContext) -> str:
+      nonlocal received_ctx
+      received_ctx = ctx
+      return "ok"
+
+    mock_ctx = self._make_mock_context()
+    runner = tool_runner.ToolRunner([_batch_ctx_tool])
+    runner.set_context(mock_ctx)
+    results = asyncio.run(
+        runner.process_tool_calls(
+            [sdk_types.ToolCall(name="_batch_ctx_tool", args={})]
+        )
+    )
+    self.assertLen(results, 1)
+    self.assertEqual(results[0].result, "ok")
+    self.assertIs(received_ctx, mock_ctx)
+
+  def test_context_not_injected_when_already_in_kwargs(self):
+    """Verifies that explicit context kwargs are not overwritten.
+
+    What: Checks that injection does not clobber explicit arguments.
+    Why: If a caller explicitly provides the context param, injection
+    must respect it to avoid surprising overwrites.
+    How: Passes the context param explicitly and verifies it's used.
+    """
+    from google.antigravity.tools import tool_context  # pylint: disable=g-import-not-at-top
+
+    received_ctx = None
+
+    def _ctx_tool(ctx: tool_context.ToolContext) -> str:
+      nonlocal received_ctx
+      received_ctx = ctx
+      return "ok"
+
+    mock_ctx = self._make_mock_context()
+    explicit_ctx = self._make_mock_context()
+    explicit_ctx.conversation_id = "explicit-id"
+
+    runner = tool_runner.ToolRunner([_ctx_tool])
+    runner.set_context(mock_ctx)
+    asyncio.run(runner.execute("_ctx_tool", ctx=explicit_ctx))
+    self.assertIs(received_ctx, explicit_ctx)
+
+  def test_unregister_cleans_context_param_cache(self):
+    """Verifies that unregistering a tool removes its context param cache.
+
+    What: Checks that _context_params is cleaned up on unregister.
+    Why: Stale cache entries for removed tools could cause issues on
+    re-registration.
+    How: Registers and unregisters a context tool, verifies cache is clean.
+    """
+    from google.antigravity.tools import tool_context  # pylint: disable=g-import-not-at-top
+
+    def _ctx_tool(ctx: tool_context.ToolContext) -> str:
+      return "ok"
+
+    runner = tool_runner.ToolRunner([_ctx_tool])
+    self.assertIn("_ctx_tool", runner._context_params)
+    runner.unregister("_ctx_tool")
+    self.assertNotIn("_ctx_tool", runner._context_params)
+
+
+class SchemaGenerationTest(absltest.TestCase):
+  """Validates get_public_callable schema generation.
+
+  Ensures that injectable parameters are hidden from the callable's
+  signature so they don't appear in tool schemas sent to the model.
+  """
+
+  def test_public_callable_for_plain_tool(self):
+    """Verifies that plain tools return themselves as the public callable.
+
+    What: Checks that tools without ToolContext are returned as-is.
+    Why: No schema modification should happen for regular tools.
+    How: Calls get_public_callable and asserts identity.
+    """
+    runner = tool_runner.ToolRunner([_sample_tool])
+    public = runner.get_public_callable("_sample_tool")
+    self.assertIs(public, _sample_tool)
+
+  def test_public_callable_hides_context_param(self):
+    """Verifies that the ToolContext parameter is hidden from the signature.
+
+    What: Checks that the public callable's signature lacks the context param.
+    Why: The model must not see injectable parameters in the tool schema.
+    How: Creates a tool with ToolContext, gets its public callable, and
+    inspects the resulting signature.
+    """
+    import inspect  # pylint: disable=g-import-not-at-top
+    from google.antigravity.tools import tool_context  # pylint: disable=g-import-not-at-top
+
+    def _schema_tool(query: str, ctx: tool_context.ToolContext) -> str:
+      return query
+
+    runner = tool_runner.ToolRunner([_schema_tool])
+    public = runner.get_public_callable("_schema_tool")
+    sig = inspect.signature(public)
+    self.assertIn("query", sig.parameters)
+    self.assertNotIn("ctx", sig.parameters)
+
+  def test_public_callable_for_unknown_tool_raises(self):
+    """Verifies that get_public_callable raises for unknown tools.
+
+    What: Checks error behavior for invalid tool names.
+    Why: Consistent error handling with other ToolRunner methods.
+    How: Calls get_public_callable with a non-existent name.
+    """
+    runner = tool_runner.ToolRunner()
+    with self.assertRaises(KeyError):
+      runner.get_public_callable("nonexistent")
+
+
 if __name__ == "__main__":
   absltest.main()

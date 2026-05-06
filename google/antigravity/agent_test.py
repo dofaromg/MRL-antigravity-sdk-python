@@ -39,6 +39,7 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
     mock_strategy_class.return_value = mock_strategy_instance
 
     mock_conversation = mock.MagicMock(spec=conversation.Conversation)
+    mock_conversation._connection = mock.MagicMock()
     mock_cm = mock.AsyncMock()
     mock_cm.__aenter__.return_value = mock_conversation
     mock_conv_create.return_value = mock_cm
@@ -59,6 +60,7 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
     mock_strategy_class.return_value = mock_strategy_instance
 
     mock_conversation = mock.MagicMock(spec=conversation.Conversation)
+    mock_conversation._connection = mock.MagicMock()
     mock_cm = mock.AsyncMock()
     mock_cm.__aenter__.return_value = mock_conversation
     mock_conv_create.return_value = mock_cm
@@ -87,6 +89,7 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
     mock_strategy_instance.stop = mock.AsyncMock()
 
     mock_conversation = mock.MagicMock(spec=conversation.Conversation)
+    mock_conversation._connection = mock.MagicMock()
     mock_cm = mock.AsyncMock()
     mock_cm.__aenter__.return_value = mock_conversation
     mock_conv_create.return_value = mock_cm
@@ -667,6 +670,7 @@ class AgentTest(unittest.IsolatedAsyncioTestCase):
     mock_strategy_class.return_value = mock_strategy_instance
 
     mock_conversation = mock.MagicMock(spec=conversation.Conversation)
+    mock_conversation._connection = mock.MagicMock()
     mock_conversation.send = mock.AsyncMock()
 
     async def mock_receive_steps():
