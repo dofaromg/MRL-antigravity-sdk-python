@@ -30,8 +30,6 @@ from google.antigravity.tools import tool_runner
 from google.antigravity.triggers import trigger_runner
 from google.antigravity.triggers import triggers as triggers_lib
 
-_Hook = hooks.Hook
-
 
 class Agent:
   """High-level Agent API for simplified interaction."""
