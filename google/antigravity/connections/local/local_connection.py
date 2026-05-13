@@ -111,6 +111,11 @@ _BUILTIN_TOOL_PROTO_FIELDS: dict[types.BuiltinTools, str] = {
 DEFAULT_HOST_TOOL_NAME = "pre_request_host_tool_request"
 
 
+def _make_step_id(trajectory_id: str, step_index: int) -> str:
+  """Creates a unique step identifier."""
+  return f"{trajectory_id}:{step_index}" if trajectory_id else str(step_index)
+
+
 class LocalConnectionStep(types.Step):
   """Connection-specific step for LocalConnection."""
 
@@ -131,7 +136,7 @@ class LocalConnectionStep(types.Step):
     traj_id = step_dict.get("trajectory_id", "")
     step_idx = step_dict.get("step_index", 0)
 
-    id_str = f"{traj_id}-{step_idx}" if traj_id else str(step_idx)
+    id_str = _make_step_id(traj_id, step_idx)
 
     tool_calls = []
 
@@ -152,7 +157,7 @@ class LocalConnectionStep(types.Step):
           types.ToolCall(
               name=active_tool_name,
               args=active_tool_args,
-              id=f"{traj_id}-{step_idx}",
+              id=_make_step_id(traj_id, step_idx),
           )
       )
 
@@ -833,7 +838,11 @@ class LocalConnection(connection.Connection):
     if step_update.request_text:
       args["request_text"] = step_update.request_text
 
-    tc = types.ToolCall(name=action_str, args=args)
+    tc = types.ToolCall(
+        id=_make_step_id(step_update.trajectory_id, step_update.step_index),
+        name=action_str,
+        args=args,
+    )
     allow = True
     # Auto-approve pre-requests for host tools because the actual tool call will
     # be sent next with its proper name and arguments, triggering its own

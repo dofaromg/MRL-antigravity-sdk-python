@@ -324,6 +324,41 @@ class LocalConnectionTest(unittest.IsolatedAsyncioTestCase):
     self.assertEqual(sent_data["toolConfirmation"]["trajectoryId"], "test_traj")
     self.assertFalse(sent_data["toolConfirmation"]["accepted"])
 
+  async def test_tool_confirmation_request_has_id(self):
+    hr = hook_runner.HookRunner()
+    hook_event = asyncio.Event()
+    captured_ids = []
+
+    @hooks_base.pre_tool_call_decide
+    async def hook(data):
+      captured_ids.append(data.id)
+      hook_event.set()
+      return hooks_base.HookResult(allow=True)
+
+    hr.register_hook(hook)
+
+    harness = test_utils.TestLocalHarness(
+        test_case=self,
+        process=self.mock_process,
+        tool_runner=self.tool_runner,
+        hook_runner=hr,
+    )
+
+    event = localharness_pb2.OutputEvent(
+        step_update=localharness_pb2.StepUpdate(
+            step_index=5,
+            trajectory_id="test_traj",
+            state=localharness_pb2.StepUpdate.STATE_WAITING_FOR_USER,
+            tool_confirmation_request=localharness_pb2.ToolConfirmationRequest(),
+            view_file=localharness_pb2.ActionViewFile(file_path="/foo/bar"),
+        )
+    )
+
+    await harness.send_event(event)
+    await harness.wait_for_event(hook_event)
+
+    self.assertEqual(captured_ids, ["test_traj:5"])
+
   async def test_tool_confirmation_uses_enum_value_for_view_file(self):
     """Verifies that hooks receive the BuiltinTools enum value as the tool name.
 
@@ -735,7 +770,7 @@ class LocalConnectionTest(unittest.IsolatedAsyncioTestCase):
         harness.conn._step_queue.get(), timeout=2.0
     )
     self.assertEqual(step_obj.trajectory_id, "ui_traj")
-    self.assertEqual(step_obj.id, "ui_traj-5")
+    self.assertEqual(step_obj.id, "ui_traj:5")
     self.assertEqual(step_obj.status, types.StepStatus.WAITING_FOR_USER)
     self.assertEqual(step_obj.content, "Waiting for confirmation")
 
