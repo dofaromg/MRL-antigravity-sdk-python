@@ -22,12 +22,15 @@ import importlib.resources
 import json
 import logging
 import os
+import pathlib
 import shutil
 import struct
 import subprocess
+import sys
 import threading
 from typing import Any, AsyncIterator, Callable, NamedTuple, Sequence, cast
 import urllib.parse
+import urllib.request
 
 from google.genai import types as genai_types
 from google.protobuf import json_format
@@ -214,8 +217,8 @@ def normalize_wire_path(path: str) -> str:
   parsed = urllib.parse.urlparse(path)
   if parsed.scheme == "file":
     # urlparse("file:///abs/path").path == "/abs/path"
-    # unquote decodes percent-encoded chars (e.g., %20 -> space)
-    return urllib.parse.unquote(parsed.path)
+    # url2pathname converts URL path to platform-native path
+    return urllib.request.url2pathname(parsed.path)
   return path
 
 
@@ -1326,7 +1329,12 @@ def _get_default_binary_path() -> str:
     if dist.files:
       for f in dist.files:
         normalized_path = str(f).replace("\\", "/")
-        if normalized_path.endswith("google/antigravity/bin/localharness"):
+        if normalized_path.endswith(
+            (
+                "google/antigravity/bin/localharness",
+                "google/antigravity/bin/localharness.exe",
+            )
+        ):
           binary_path = os.path.abspath(str(f.locate()))
           if os.path.exists(binary_path):
             return binary_path
@@ -1338,10 +1346,13 @@ def _get_default_binary_path() -> str:
     # Using 'google.antigravity' as the package name.
     # This assumes the binary is located at google/antigravity/bin/localharness
     # in the installed package.
+    suffix = (
+        "bin/localharness.exe"
+        if sys.platform == "win32"
+        else "bin/localharness"
+    )
     binary_path = str(
-        importlib.resources.files("google.antigravity").joinpath(
-            "bin/localharness"
-        )
+        importlib.resources.files("google.antigravity").joinpath(suffix)
     )
     if os.path.exists(binary_path):
       return binary_path
@@ -1466,7 +1477,7 @@ class LocalConnectionStrategy(connection.ConnectionStrategy):
     workspace_protos = [
         localharness_pb2.Workspace(
             filesystem_workspace=localharness_pb2.FilesystemWorkspace(
-                directory=p
+                directory=pathlib.Path(p).as_posix()
             )
         )
         for p in self._workspaces

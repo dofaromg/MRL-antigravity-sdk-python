@@ -27,7 +27,7 @@ from google.antigravity.connections import connection
 from google.antigravity.hooks import policy
 
 DEFAULT_APP_DATA_DIR = (
-    pathlib.Path("~/.gemini/antigravity").expanduser().resolve()
+    (pathlib.Path("~") / ".gemini" / "antigravity").expanduser().resolve()
 )
 
 
