@@ -19,6 +19,11 @@ for input or clarification using the `AskQuestionHook`.
 
 To run:
   python human_in_the_loop.py
+
+Criteria for correct script performance:
+  1. The script exits cleanly with return code 0 (no unhandled exceptions).
+  2. The agent prompts the user for clarification using the `ask_question` tool.
+  3. The final response from the agent is printed after user input is received.
 """
 
 import asyncio
