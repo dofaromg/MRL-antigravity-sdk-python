@@ -27,8 +27,7 @@ import contextlib
 from typing import Any, AsyncIterator, Sequence
 
 from google.antigravity import types
-from google.antigravity.connections import connection
-
+from google.antigravity.connections import connection as connection_lib
 
 # Default maximum number of steps to retain in history.
 _DEFAULT_MAX_HISTORY_SIZE = 10_000
@@ -75,7 +74,7 @@ class Conversation:
 
   def __init__(
       self,
-      conn: connection.Connection,
+      conn: connection_lib.Connection,
       *,
       max_history_size: int = _DEFAULT_MAX_HISTORY_SIZE,
       history: Sequence[types.Step] | None = None,
@@ -107,7 +106,7 @@ class Conversation:
   @contextlib.asynccontextmanager
   async def create(
       cls,
-      strategy: connection.ConnectionStrategy,
+      strategy: connection_lib.ConnectionStrategy,
   ) -> AsyncIterator["Conversation"]:
     """Creates a new conversation.
 
@@ -310,7 +309,7 @@ class Conversation:
       ]
 
   @property
-  def connection(self) -> connection.Connection:
+  def connection(self) -> connection_lib.Connection:
     """Returns the underlying Connection transport.
 
     Intended for advanced use cases that need direct transport access.
